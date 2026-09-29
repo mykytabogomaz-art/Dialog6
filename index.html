@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Інтерактивні діалоги</title>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
+    body { background-color: #4a90e2; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
+    
+    /* Картка зафіксована за висотою, щоб унеможливити будь-які стрибки */
+    .quiz-card { 
+      background-color: #f4f7f6; 
+      border-radius: 14px; 
+      padding: 15px; 
+      width: 750px; 
+      height: 550px; 
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3); 
+      display: flex; 
+      flex-direction: column; 
+      justify-content: space-between; 
+    }
+    
+    .top-bar { display: flex; justify-content: space-between; align-items: center; height: 20px; }
+    .header-title { font-size: 15px; font-weight: bold; color: #333; text-align: center; height: 20px; margin: 0; }
+    
+    /* Основний блок зафіксований жорстко */
+    .comic-scene { 
+      position: relative; 
+      height: 320px; 
+      min-height: 320px;
+      max-height: 320px;
+      background: linear-gradient(to bottom, #74ebd5 0%, #74ebd5 65%, #f4d03f 65%, #f4d03f 100%); 
+      border-radius: 10px; 
+      border: 3px solid #fff; 
+      box-shadow: 0 3px 10px rgba(0,0,0,0.1); 
+      overflow: hidden; 
+      flex-shrink: 0;
+    }
+    .sun { position: absolute; top: 10px; right: 20px; width: 35px; height: 35px; background-color: #FFD700; border-radius: 50%; box-shadow: 0 0 10px #FFD700; }
+    .character { position: absolute; bottom: 5px; font-size: 70px; line-height: 1; z-index: 2; filter: drop-shadow(2px 3px 4px rgba(0,0,0,0.2)); }
+    .char-left { left: 8%; } .char-right { right: 8%; }
+    
+    /* Контейнер для історії повідомлень */
+    .chat-history {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      right: 5px;
+      bottom: 5px;
+      overflow-y: auto;
+      padding: 5px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      z-index: 1;
+    }
+    
+    .msg-bubble {
+      max-width: 68%;
+      padding: 6px 10px;
+      border-radius: 10px;
+      font-weight: bold;
+      font-size: 13px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      clear: both;
+      animation: fadeIn 0.2s ease-in-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .msg-left {
+      align-self: flex-start;
+      background: #f0f8ff;
+      border: 2px solid #4a90e2;
+      color: #333;
+      border-bottom-left-radius: 2px;
+    }
+    
+    .msg-right {
+      align-self: flex-end;
+      background: #fff;
+      border: 2px solid #ddd;
+      color: #333;
+      border-bottom-right-radius: 2px;
+    }
+    
+    .msg-question-placeholder {
+      align-self: flex-end;
+      background: #fffbe6;
+      border: 2px dashed #f39c12;
+      color: #d68910;
+      min-height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom-right-radius: 2px;
+      width: 60%;
+    }
+
+    /* Зафіксована область взаємодії, щоб уникнути зміщень */
+    #interaction-area {
+      height: 95px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .options-container { 
+      height: 40px;
+      display: flex; 
+      gap: 8px; 
+      justify-content: center; 
+      align-items: center; 
+    }
+    
+    .option-btn { background-color: #fff; border: 2px solid #bdc3c7; color: #2c3e50; border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: bold; cursor: pointer; flex: 1; max-width: 32%; transition: all 0.2s; text-align: center; }
+    .option-btn:hover { border-color: #f39c12; background-color: #fef9e7; }
+    .option-btn.selected { border-color: #f39c12; background-color: #fef9e7; color: #b7950b; }
+    
+    .controls { height: 50px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .action-btn { background-color: #ff9800; color: white; border: none; border-radius: 8px; padding: 6px 20px; font-size: 14px; font-weight: bold; cursor: pointer; }
+    .action-btn:disabled { background-color: #d5d8dc; color: #999; cursor: not-allowed; }
+    .feedback { font-size: 13px; font-weight: bold; min-height: 18px; text-align: center; }
+    .feedback.correct { color: #27ae60; } .feedback.incorrect { color: #e74c3c; }
+    .progress { font-size: 13px; color: #7f8c8d; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="quiz-card">
+    <div class="top-bar">
+      <div class="progress" id="progress">Завдання 1 з 10</div>
+      <div class="header-title">Обери правильну репліку для правого персонажа</div>
+    </div>
+    
+    <div class="comic-scene">
+      <div class="sun"></div>
+      <div class="chat-history" id="chat-history"></div>
+      <div class="character char-left" id="char-left">👨</div>
+      <div class="character char-right" id="char-right">👦</div>
+    </div>
+    
+    <div id="interaction-area">
+        <div class="options-container" id="options-container"></div>
+        <div class="controls">
+            <button class="action-btn" id="check-btn" onclick="checkAnswer()">Перевірити</button>
+            <div class="feedback" id="feedback"></div>
+        </div>
+    </div>
+  </div>
+
+  <script>
+    const quizData = [
+      {
+        "dialogue": [
+          {"speaker": "left", "type": "text", "content": "- Привіт! Ти вже зібрався до школи?"},
+          {"speaker": "right", "type": "question", "options": ["- Я сьогодні їду на тракторі.", "- Так, портфель уже готовий.", "- Сьогодні ж божевільний день."], "correct": 1},
+          {"speaker": "left", "type": "text", "content": "- Чудово! А ти поклав усе необхідне?"},
+          {"speaker": "right", "type": "question", "options": ["- Звісно: зошити, пенал і книжки.", "- Я забув узяти каструлю для супу.", "- Сьогодні я буду спати весь день."], "correct": 0},
+          {"speaker": "left", "type": "text", "content": "- Тоді вирушаймо, щоб не запізнитися на урок!"},
+          {"speaker": "right", "type": "question", "options": ["- В Барселоні є море.", "- Сонце світить дуже яскраво.", "- Погнали швидше, бо запізнимося!"], "correct": 2}
+        ],
+        "emojiLeft": "👨", "emojiRight": "👦"
+      },
+      {
+        "dialogue": [
+          {"speaker": "left", "type": "text", "content": "- Добрий день! Бабусю, яке твоє улюблене свято?"},
+          {"speaker": "right", "type": "question", "options": ["- Я сьогодні готую борщ.", "- Моє улюблене свято — Новий рік.", "- Космонавти летять на Марс."], "correct": 1},
+          {"speaker": "left", "type": "text", "content": "- О, це чудове зимове свято з подарунками!"},
+          {"speaker": "right", "type": "question", "options": ["- Папуга співає пісні на гілці.", "- Комп'ютер зламався вчора ввечері.", "- Так, ми завжди прикрашаємо гарну ялинку."], "correct": 2},
+          {"speaker": "left", "type": "text", "content": "- Ти вже чекаєш на Новий рік?"},
+          {"speaker": "right", "type": "question", "options": ["- Завжди чекаю з великим нетерпінням!", "- Риба плаває у глибокій річці.", "- Сонце заходить на заході сонця."], "correct": 0}
+        ],
+        "emojiLeft": "👧", "emojiRight": "👵"
+      },
+      {
+        "dialogue": [
+          {"speaker": "left", "type": "text", "content": "- Привіт! Мам, яка у нас є домашня тваринка?"},
+          {"speaker": "right", "type": "question", "options": ["- Машина їде по дорозі.", "- У нас живе білий пухнастий котик.", "- Літак летить у небі."], "correct": 1},
+          {"speaker": "left", "type": "text", "content": "- Як цікаво! Як його звати?"},
+          {"speaker": "right", "type": "question", "options": ["- Котра зараз година?", "- Його звати Сніжок.", "- Завтра буде понеділок."], "correct": 1},
+          {"speaker": "left", "type": "text", "content": "- Він любить бавитися?"},
+          {"speaker": "right", "type": "question", "options": ["- Вода кипить при ста градусах.", "- Дуже любить бігати за м'ячиком!", "- Він варить смачний суп на кухні."], "correct": 1}
+        ],
+        "emojiLeft": "👦", "emojiRight": "👩"
+      },
+      {
+        "dialogue": [
+          {"speaker": "left", "type": "text", "content": "- Подивись у вікно, яка погода на вулиці?"},
+          {"speaker": "right", "type": "question", "options": ["- Я читаю цікаву книжку.", "- Мій тато купив новий велосипед.", "- На вулиці зараз іде сніг."], "correct": 2},
+          {"speaker": "left", "type": "text", "content": "- Зима настала! Можна йти на двір."},
+          {"speaker": "right", "type": "question", "options": ["- Підемо швидше ліпити сніговика!", "- Я люблю їсти гарячий борщ.", "- Дрімає тигр у клітці."], "correct": 0},
+          {"speaker": "left", "type": "text", "content": "- Тільки одягни теплі рукавички!"},
+          {"speaker": "right", "type": "question", "options": ["- Шафа стоїть у коридорі.", "- Пташки полетіли на південь.", "- Вже одягнула, побігли на вулицю!"], "correct": 2}
+        ],
+        "emojiLeft": "👨", "emojiRight": "👧"
+      },
+      {
+        "dialogue": [
+          {"speaker": "left", "type": "text", "content": "- Вітаю тебе з днем народження! Скільки тобі років?"},
+          {"speaker": "right", "type": "question", "options": ["- Мені виповнилося вже 12 років.", "- Ручка лежить на столі.", "- Я вмію плавати в басейні."], "correct": 0},
+          {"speaker": "left", "type": "text", "content": "- Ти вже зовсім великий школяр!"},
+          {"speaker": "right", "type": "question", "options": ["- Мій кіт спить на дивані.", "- Так, я навчаюся в сьомому класі.", "- Завтра буде п'ятниця."], "correct": 1},
+          {"speaker": "left", "type": "text", "content": "- Бажаю тобі гарних оцінок."},
+          {"speaker": "right", "type": "question", "options": ["- Ложка лежить у тарілці.", "- Сонце світить яскраво.", "- Дякую вам за теплі слова!"], "correct": 2}
+        ],
+        "emojiLeft": "👩‍🏫", "emojiRight": "👦"
+      },
+      {
+        "dialogue": [
+          {"speaker": "left", "type": "text", "content": "- Ти вже проголодніла після школи?"},
+          {"speaker": "right", "type": "question", "options": ["- Я купила новий зошит.", "- Так! Моя улюблена страва — вареники.", "- На вулиці йде дощ."], "correct": 1},
+          {"speaker": "left", "type": "text", "content": "- О, чудово! З якою начинкою ти їх хочеш?"},
+          {"speaker": "right", "type": "question", "options": ["- Зі смачними солодкими вишнями!", "- У мене є червоний олівець.", "- Мій портфель дуже важкий."], "correct": 0},
+          {"speaker": "left", "type": "text", "content": "- Зараз бабуся якраз їх зварить."},
+          {"speaker": "right", "type": "question", "options": ["- Я побіжу грати у футбол.", "- Книжка лежить на полиці.", "- Дякую, я дуже чекаю!"], "correct": 2}
+        ],
+        "emojiLeft": "👨‍🍳", "emojiRight": "👧"
+      },
+      {
+        "dialogue": [
+          {"speaker": "left", "type": "text", "content": "- Як звати твою шкільну вчительку?"},
+          {"speaker": "right", "type": "question", "options": ["- Мій собака дуже голодний.", "- Мою вчительку звати Олена Петрівна.", "- На небі немає хмар."], "correct": 1},
+          {"speaker": "left", "type": "text", "content": "- Вона добра до вас?"},
+          {"speaker": "right", "type": "question", "options": ["- Дерево росте біля дому.", "- Я люблю грати в комп'ютер.", "- Так, вона надзвичайно добра й уважна."], "correct": 2},
+          {"speaker": "left", "type": "text", "content": "- Тобі подобається навчатися в школі?"},
+          {"speaker": "right", "type": "question", "options": ["- Дуже подобається, там цікаво!", "- Суп уже охолов у тарілці.", "- Автомобіль їде швидко."], "correct": 0}
+        ],
+        "emojiLeft": "👦", "emojiRight": "👧"
+      },
+      {
+        "dialogue": [
+          {"speaker": "left", "type": "text", "content": "- Чим ти зазвичай займаєшся вечорами?"},
+          {"speaker": "right", "type": "question", "options": ["- Хліб у магазині.", "- Вечорами я люблю малювати.", "- Сонце вже давно сіло."], "correct": 1},
+          {"speaker": "left", "type": "text", "content": "- Що саме ти любиш зображати на папері?"},
+          {"speaker": "right", "type": "question", "options": ["- Малюю тварин та гарну природу.", "- Моя чашка стоїть на столі.", "- Я одягаю зимову куртку."], "correct": 0},
+          {"speaker": "left", "type": "text", "content": "- Покажеш мені свої малюнки?"},
+          {"speaker": "right", "type": "question", "options": ["- Мій друг поїхав до Києва.", "- Вікно закрите на замок.", "- Звісно, із задоволенням покажу альбом!"], "correct": 2}
+        ],
+        "emojiLeft": "👩", "emojiRight": "👦"
+      },
+      {
+        "dialogue": [
+          {"speaker": "left", "type": "text", "content": "- Дідусю, як звати твого песика?"},
+          {"speaker": "right", "type": "question", "options": ["- Я читаю цікаву казку.", "- Мого собаку звати Рекс.", "- На вулиці світить місяць."], "correct": 1},
+          {"speaker": "left", "type": "text", "content": "- Скільки йому років?"},
+          {"speaker": "right", "type": "question", "options": ["- Йому вже виповнилося два роки.", "- Суп дуже гарячий.", "- Двері відчинені настіж."], "correct": 0},
+          {"speaker": "left", "type": "text", "content": "- Можна його погладити?"},
+          {"speaker": "right", "type": "question", "options": ["- Ручка пише синім кольором.", "- Так, він дуже лагідний і добрий.", "- Я купив новий портфель."], "correct": 1}
+        ],
+        "emojiLeft": "👴", "emojiRight": "👧"
+      },
+      {
+        "dialogue": [
+          {"speaker": "left", "type": "text", "content": "- У якому місті ти живеш?"},
+          {"speaker": "right", "type": "question", "options": ["- Я живу в чудовому місті Київ.", "- Моя куртка синього кольору.", "- Я з'їв смачне яблуко."], "correct": 0},
+          {"speaker": "left", "type": "text", "content": "- Столиця нашої країни! Тобі тут подобається?"},
+          {"speaker": "right", "type": "question", "options": ["- Книга лежить на підлозі.", "- Так, дуже подобається.", "- Завтра буде вихідний день."], "correct": 1},
+          {"speaker": "left", "type": "text", "content": "- Де твоє улюблене місце для прогулянок?"},
+          {"speaker": "right", "type": "question", "options": ["- Мій кіт ловить мишей.", "- Я люблю гуляти в зеленому парку біля метро Бориспільська.", "- Ложка впала під стіл."], "correct": 1}
+        ],
+        "emojiLeft": "👦", "emojiRight": "👨"
+      }
+    ];
+    
+    let currentTaskIndex = 0;
+    let currentDialogueStep = 0;
+    let selectedOptionIndex = null;
+    let activeQuestionNode = null;
+
+    function loadTask() {
+      const task = quizData[currentTaskIndex];
+      document.getElementById('progress').innerText = `Завдання ${currentTaskIndex + 1} з ${quizData.length}`;
+      document.getElementById('char-left').innerText = task.emojiLeft;
+      document.getElementById('char-right').innerText = task.emojiRight;
+      
+      document.getElementById('chat-history').innerHTML = '';
+      currentDialogueStep = 0;
+      
+      document.getElementById('feedback').innerText = "";
+      document.getElementById('feedback').className = "feedback";
+      
+      progressDialogue();
+    }
+
+    function progressDialogue() {
+      const task = quizData[currentTaskIndex];
+      const chatHistory = document.getElementById('chat-history');
+      const checkBtn = document.getElementById('check-btn');
+      
+      checkBtn.style.display = 'none';
+
+      function displayNext() {
+        if (currentDialogueStep < task.dialogue.length) {
+          const stepData = task.dialogue[currentDialogueStep];
+          
+          if (stepData.type === 'text') {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = stepData.speaker === 'left' ? 'msg-bubble msg-left' : 'msg-bubble msg-right';
+            msgDiv.innerText = stepData.content;
+            chatHistory.appendChild(msgDiv);
+            currentDialogueStep++;
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+            setTimeout(displayNext, 250);
+          } else if (stepData.type === 'question') {
+            showQuestion(stepData);
+          }
+        } else {
+          checkBtn.style.display = 'inline-block';
+          checkBtn.innerText = "Наступне завдання";
+          checkBtn.onclick = nextTask;
+          checkBtn.disabled = false;
+        }
+      }
+
+      displayNext();
+    }
+
+    function showQuestion(questionData) {
+      const chatHistory = document.getElementById('chat-history');
+      const checkBtn = document.getElementById('check-btn');
+      
+      activeQuestionNode = document.createElement('div');
+      activeQuestionNode.className = 'msg-bubble msg-question-placeholder';
+      activeQuestionNode.innerText = "Обери репліку...";
+      chatHistory.appendChild(activeQuestionNode);
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+      
+      selectedOptionIndex = null;
+      document.getElementById('feedback').innerText = "";
+      
+      checkBtn.style.display = 'inline-block';
+      checkBtn.innerText = "Перевірити";
+      checkBtn.onclick = checkAnswer;
+      checkBtn.disabled = true;
+
+      const optionsContainer = document.getElementById('options-container');
+      optionsContainer.innerHTML = '';
+
+      questionData.options.forEach((optionText, index) => {
+        const btn = document.createElement('button');
+        btn.className = 'option-btn';
+        btn.innerText = optionText;
+        btn.onclick = () => selectOption(index, optionText);
+        optionsContainer.appendChild(btn);
+      });
+    }
+
+    function selectOption(index, optionText) {
+      selectedOptionIndex = index;
+      
+      if(activeQuestionNode) {
+          activeQuestionNode.innerText = optionText;
+      }
+      
+      const buttons = document.querySelectorAll('.option-btn');
+      buttons.forEach((btn, i) => {
+        btn.classList.toggle('selected', i === index);
+      });
+
+      document.getElementById('check-btn').disabled = false;
+      document.getElementById('feedback').innerText = "";
+    }
+
+    function checkAnswer() {
+      const task = quizData[currentTaskIndex];
+      const stepData = task.dialogue[currentDialogueStep];
+      const feedback = document.getElementById('feedback');
+      const checkBtn = document.getElementById('check-btn');
+
+      if (selectedOptionIndex === stepData.correct) {
+        feedback.innerText = "Правильно!";
+        feedback.className = "feedback correct";
+        
+        if(activeQuestionNode) {
+            activeQuestionNode.className = 'msg-bubble msg-right';
+            activeQuestionNode = null;
+        }
+        
+        document.getElementById('options-container').innerHTML = '';
+        checkBtn.style.display = 'none';
+        
+        setTimeout(() => {
+            feedback.innerText = "";
+            currentDialogueStep++;
+            progressDialogue();
+        }, 400);
+      } else {
+        feedback.innerText = "Неправильно. Спробуй ще раз!";
+        feedback.className = "feedback incorrect";
+      }
+    }
+
+    function nextTask() {
+      currentTaskIndex++;
+      if (currentTaskIndex < quizData.length) {
+          loadTask();
+      } else {
+          finishQuiz();
+      }
+    }
+
+    function finishQuiz() {
+      document.querySelector('.quiz-card').innerHTML = `
+        <h2 style="color: #4a90e2; font-size: 22px; text-align:center;">Чудова робота! 🎉</h2>
+        <p style="font-size: 15px; margin-bottom: 12px; text-align:center;">Ти успішно пройшов усі діалоги!</p>
+        <div style="display:flex; justify-content:center;">
+          <button class="action-btn" onclick="location.reload()">Пройти знову</button>
+        </div>`;
+    }
+
+    loadTask();
+  </script>
+</body>
+</html>
